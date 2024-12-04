@@ -74,41 +74,22 @@ model.add(Dense(1, activation='sigmoid'))  # Output layer with sigmoid activatio
 # Compile the model
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
 
-# Step 5: Train the model with verification in the last epoch
-for epoch in range(15):  # You can increase this for better performance
-    history = model.fit(
-        train_data,
-        epochs=1,  # Train for one epoch at a time
-        validation_data=val_data,
-        verbose=2
-    )
-    
-    if epoch == 14:  # Check if it's the last epoch (index starts from 0)
-        verification_path = '/content/drive/MyDrive/dataset/verification'  # Path to your verification folder
-        men_folder = os.path.join(verification_path, 'men')
-        women_folder = os.path.join(verification_path, 'women')
+# Lists to store training history
+training_accuracy = []
+validation_accuracy = []
+training_loss = []
+validation_loss = []
 
-        # Create subfolders if they don't exist
-        os.makedirs(men_folder, exist_ok=True)
-        os.makedirs(women_folder, exist_ok=True)
 
-        for filename in os.listdir(verification_path):
-            if filename.endswith(('.jpg', '.jpeg', '.png')):  # Check for image files
-                image_path = os.path.join(verification_path, filename)
-                img = cv2.imread(image_path)
-                img = cv2.resize(img, (64, 64))  # Resize to match model input
-                img = img / 255.0  # Normalize pixel values
-                img = np.expand_dims(img, axis=0)  # Add batch dimension
+# Step 5: Train the model
+history = model.fit(
+    train_data,
+    epochs=20,  # You can increase this for better performance
+    validation_data=val_data,
+    verbose=2
+)
 
-                prediction = model.predict(img)
-                predicted_class = 0 if prediction[0][0] < 0.5 else 1  # Assuming 0 is Male and 1 is Female
-
-                if predicted_class == 0:
-                    shutil.move(image_path, men_folder)  # Move to men folder
-                else:
-                    shutil.move(image_path, women_folder)  # Move to women folder
-
-# Step 6: Evaluate the model (optional)
+# Step 6: Evaluate the model 
 loss, accuracy = model.evaluate(val_data)
 print(f"Validation accuracy: {accuracy * 100:.2f}%")
 
@@ -138,7 +119,37 @@ plt.show()
 # Step 8: Save the model (optional)
 #model.save('/content/gender_model.h5')
 
-# Step 9: Display validation images with labels
+# Step 9: Verification after training (moved outside the training loop)
+def verify_and_sort_images(model, verification_path):
+  """Verifies images in the given path and sorts them into men/women folders."""
+  men_folder = os.path.join(verification_path, 'men')
+  women_folder = os.path.join(verification_path, 'women')
+
+  # Create subfolders if they don't exist
+  os.makedirs(men_folder, exist_ok=True)
+  os.makedirs(women_folder, exist_ok=True)
+
+  for filename in os.listdir(verification_path):
+    if filename.endswith(('.jpg', '.jpeg', '.png')):  # Check for image files
+      image_path = os.path.join(verification_path, filename)
+      img = cv2.imread(image_path)
+      img = cv2.resize(img, (64, 64))  # Resize to match model input
+      img = img / 255.0  # Normalize pixel values
+      img = np.expand_dims(img, axis=0)  # Add batch dimension
+
+      prediction = model.predict(img)
+      predicted_class = 0 if prediction[0][0] < 0.5 else 1  # Assuming 0 is Male and 1 is Female
+
+      if predicted_class == 0:
+        shutil.move(image_path, men_folder)  # Move to men folder
+      else:
+        shutil.move(image_path, women_folder)  # Move to women folder
+
+# Call the verification function
+verification_path = '/content/drive/MyDrive/dataset/verification'
+verify_and_sort_images(model, verification_path)
+
+# Step 10: Display validation images with labels
 import time
 import matplotlib.pyplot as plt
 import numpy as np
