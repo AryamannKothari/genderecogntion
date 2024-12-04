@@ -1,0 +1,196 @@
+# Step 1: Install required libraries (only necessary if not already installed in your Colab environment)
+!pip install tensorflow opencv-python
+
+# Step 2: Import necessary libraries
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import matplotlib.pyplot as plt
+import cv2
+import shutil
+import os
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+
+# Step 3: Load and preprocess the dataset
+# Assuming images are stored in 'gender_images' folder (replace with your dataset path)
+# The dataset should have two subfolders: 'male' and 'female'
+
+dataset_path = '/content/drive/MyDrive/dataset'  # Replace with your dataset path
+image_size = (64, 64)  # Resize images to 64x64 pixels
+
+datagen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2,
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    fill_mode='nearest'
+)
+
+# Set up ImageDataGenerator to load and augment images
+datagen = ImageDataGenerator(rescale=1./255)  # Normalize pixel values to range [0,1] - remove validation split here
+
+# Load training and validation datasets
+train_data = datagen.flow_from_directory(
+    os.path.join(dataset_path, 'train'),  # Point to the 'train' subfolder
+    target_size=image_size,
+    batch_size=32,
+    class_mode='binary' # Remove the subset argument
+)
+
+val_data = datagen.flow_from_directory(
+    os.path.join(dataset_path, 'validation'), # Point to the 'validation' subfolder
+    target_size=image_size,
+    batch_size=32,
+    class_mode='binary' # Remove the subset argument
+)
+
+
+# Step 4: Build the Gender Recognition Model
+model = Sequential()
+
+# Convolutional layers and pooling
+model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(64, 64, 3)))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Conv2D(64, (3, 3), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Conv2D(128, (3, 3), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+# Flatten the features and pass them to dense layers
+model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.5))  # Dropout to avoid overfitting
+model.add(Dense(1, activation='sigmoid'))  # Output layer with sigmoid activation for binary classification
+
+# Compile the model
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
+
+# Step 5: Train the model with verification in the last epoch
+for epoch in range(15):  # You can increase this for better performance
+    history = model.fit(
+        train_data,
+        epochs=1,  # Train for one epoch at a time
+        validation_data=val_data,
+        verbose=2
+    )
+    
+    if epoch == 14:  # Check if it's the last epoch (index starts from 0)
+        verification_path = '/content/drive/MyDrive/dataset/verification'  # Path to your verification folder
+        men_folder = os.path.join(verification_path, 'men')
+        women_folder = os.path.join(verification_path, 'women')
+
+        # Create subfolders if they don't exist
+        os.makedirs(men_folder, exist_ok=True)
+        os.makedirs(women_folder, exist_ok=True)
+
+        for filename in os.listdir(verification_path):
+            if filename.endswith(('.jpg', '.jpeg', '.png')):  # Check for image files
+                image_path = os.path.join(verification_path, filename)
+                img = cv2.imread(image_path)
+                img = cv2.resize(img, (64, 64))  # Resize to match model input
+                img = img / 255.0  # Normalize pixel values
+                img = np.expand_dims(img, axis=0)  # Add batch dimension
+
+                prediction = model.predict(img)
+                predicted_class = 0 if prediction[0][0] < 0.5 else 1  # Assuming 0 is Male and 1 is Female
+
+                if predicted_class == 0:
+                    shutil.move(image_path, men_folder)  # Move to men folder
+                else:
+                    shutil.move(image_path, women_folder)  # Move to women folder
+
+# Step 6: Evaluate the model (optional)
+loss, accuracy = model.evaluate(val_data)
+print(f"Validation accuracy: {accuracy * 100:.2f}%")
+
+# Step 7: Plot accuracy and loss curves
+plt.figure(figsize=(12, 4))
+
+# Accuracy plot
+plt.subplot(1, 2, 1)
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.title('Accuracy over Epochs')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+
+# Loss plot
+plt.subplot(1, 2, 2)
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.title('Loss over Epochs')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+plt.show()
+
+# Step 8: Save the model (optional)
+#model.save('/content/gender_model.h5')
+
+# Step 9: Display validation images with labels
+import time
+import matplotlib.pyplot as plt
+import numpy as np
+import os # Import os to access file paths
+
+def display_image_with_label(image_path, label):
+    """
+    Display an image using Matplotlib.
+    This function is a replacement for cv2.imshow, which is not available in some environments.
+
+    Args:
+        image: The image to display.
+    """
+    # Load the original image
+    original_image = cv2.imread(image_path)
+
+    # Calculate text position and font scale
+    text_x = int(original_image.shape[1] * 0.05)  # 5% from the left
+    text_y = int(original_image.shape[0] * 0.1)   # 10% from the top
+    font_scale = original_image.shape[1] / 500  # Scale font based on image width
+
+    # Resize image using INTER_AREA for better quality
+    resized_image = cv2.resize(original_image, (64, 64), interpolation=cv2.INTER_AREA)
+
+    label_name = 'Man' if label == 0 else 'Woman'  # Assuming 0 is Male and 1 is Female
+
+    # Overlay text on the original image
+    cv2.putText(original_image, label_name, (text_x, text_y),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0) if label == 0 else (255, 0, 0), 2)
+
+
+    # Convert BGR to RGB if necessary
+    if len(original_image.shape) == 3 and original_image.shape[2] == 3:
+        original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+
+    plt.imshow(original_image)
+    plt.axis('off')  # Turn off axis labels
+    plt.show()
+
+
+# Get the indices of the current batch
+batch_indices = val_data.index_array[val_data.batch_index * val_data.batch_size:(val_data.batch_index + 1) * val_data.batch_size]
+
+# Get file paths using the indices
+image_paths = [val_data.filepaths[i] for i in batch_indices]
+
+# Get the true labels for the batch
+labels = val_data.labels[batch_indices]
+
+# Loop through the images and labels and display them
+for i in range(len(image_paths)):  # Use len(image_paths) for correct iteration
+    display_image_with_label(image_paths[i], labels[i])
+
+
+
